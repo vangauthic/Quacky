@@ -3,11 +3,6 @@ import discord
 import aiosqlite
 import yaml
 import re
-import pafy
-from discord import FFmpegPCMAudio, PCMVolumeTransformer
-import urllib
-import youtube_dl
-from youtube_dl import YoutubeDL
 
 from discord.ext import commands
 from discord import app_commands
