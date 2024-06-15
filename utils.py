@@ -3,9 +3,6 @@ import aiosqlite
 from datetime import datetime
 import yaml
 import json
-import youtube_dl
-
-from youtube_dl import YoutubeDL
 
 admins = [1029146068996325447, 503641822141349888]
 
