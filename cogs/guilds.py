@@ -9,8 +9,6 @@ from discord import app_commands
 from datetime import datetime
 from utils import logCommand, checkPlayer
 
-FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5','options': '-vn'}
-
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
 

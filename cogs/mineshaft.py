@@ -616,7 +616,7 @@ class Mineshaft(commands.Cog):
                 
                 if playerDmg == 0:
                     embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"You don't have a sword! Type **/shop** to buy one!", color=discord.Color.from_str(minecraft_color))
-                    await interaction.followup.send(embed=embed)
+                    await interaction.response.edit_message(embed=embed)
                     return
                 
                 while mobHealth > 0:
