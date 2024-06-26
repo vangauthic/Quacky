@@ -1,4 +1,5 @@
 import discord
+import aiomysql
 import yaml
 import sys
 from discord.ext import commands
@@ -13,14 +14,41 @@ activity = data["General"]["ACTIVITY"].lower()
 doing_activity = data["General"]["DOING_ACTIVITY"]
 status = data["General"]["STATUS"].lower()
 admin_guild_id = data["General"]["ADMIN_GUILD_ID"]
+host = data["MySQL"]["HOST"]
+user = data["MySQL"]["USERNAME"]
+password = data["MySQL"]["PASSWORD"]
+database = data["MySQL"]["DATABASE"]
 guild_color = data["Embeds"]["GUILD_COLOR"]
 logo_emoji = data["Emojis"]["LOGO"]
 shield_emoji = data["Emojis"]["SHIELD"]
 
 initial_extensions = [
-                      'cogs.admin',
-                      'cogs.mineshaft',
-                      'cogs.guilds'
+                      'cogs.minecraft.balance',
+                      'cogs.minecraft.buy',
+                      'cogs.minecraft.chop',
+                      'cogs.minecraft.craft',
+                      'cogs.minecraft.help',
+                      'cogs.minecraft.hunt',
+                      'cogs.minecraft.inventory',
+                      'cogs.minecraft.mine',
+                      'cogs.minecraft.networth',
+                      'cogs.minecraft.refine',
+                      'cogs.minecraft.sell',
+                      'cogs.minecraft.shop',
+
+                      'cogs.utility.additem',
+                      'cogs.utility.clear',
+                      'cogs.utility.deleteitem',
+                      'cogs.utility.dimensions',
+                      'cogs.utility.givecoins',
+                      'cogs.utility.giveitem',
+                      'cogs.utility.grabid',
+                      'cogs.utility.info',
+                      'cogs.utility.pfp',
+                      'cogs.utility.takecoins',
+                      'cogs.utility.takeitem',
+
+                      'cogs.cache'
                       ]
 class bcolors:
     HEADER = '\033[95m'
@@ -104,19 +132,31 @@ class sirQuacky(commands.Bot):
             activity = _activity,
             status = _status
         )
+        self.pool = None
 
     async def on_ready(self):
+        print(f'{client.user} is connected!')
 
-        print(f'{client.user} is connected!')        
+        print('Attempting to create database pools...')
+        print('Creating 1/1 pools...')
+        self.pool = await aiomysql.create_pool(
+            host=host,
+            user=user,
+            password=password,
+            db=database,
+        )
+        print('Created 1/1 pools!')
+
+        print("Attempting to check local tables...")
+        await check_tables(self)
+        print("Checked!")
+
         print('Attempting to sync slash commands...')
         await self.tree.sync()
         await self.tree.sync(guild=discord.Object(id=admin_guild_id))
         print('Synced')
 
     async def setup_hook(self):
-        print("Attempting to check local tables...")
-        await check_tables()
-        print("Checked!")
         for extension in initial_extensions:
             await self.load_extension(extension)
 

@@ -1,8 +1,9 @@
 import discord
-import aiosqlite
-from datetime import datetime
 import yaml
 import json
+import aiomysql
+from discord.ext import commands
+from datetime import datetime
 
 admins = [1029146068996325447, 503641822141349888]
 
@@ -21,64 +22,76 @@ async def convert_json_to_dict(json_str: str) -> dict:
     except json.JSONDecodeError:
         return {}
 
-async def checkPlayer(user_id: int):
-    async with aiosqlite.connect('quacky.db') as db:
-        inventory_cursor = await db.execute('SELECT * FROM inventories WHERE UserId=?', (user_id,))
-        player_inventory = await inventory_cursor.fetchone()
-        if player_inventory is None:
-            await db.execute('INSERT INTO inventories (UserId) VALUES (?)', (user_id,))
-            await db.commit()
-        
-        wallet_cursor = await db.execute('SELECT * FROM wallets WHERE UserId=?', (user_id,))
-        player_wallet = await wallet_cursor.fetchone()
-        if player_wallet is None:
-            await db.execute('INSERT INTO wallets (UserId) VALUES (?)', (user_id,))
-            await db.commit()
+async def checkPlayer(bot: commands.Bot, user_id: int):
+    async with bot.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
 
-        
-    async with aiosqlite.connect('guilds.db') as db:
-        profile_cursor = await db.execute('SELECT * FROM profiles WHERE UserId=?', (user_id,))
-        player_profile = await profile_cursor.fetchone()
-        if player_profile is None:
-            await db.execute('INSERT INTO profiles (UserId) VALUES (?)', (user_id,))
-            await db.commit()
+            sql = 'SELECT * FROM inventories WHERE UserId=%s'
+            await cursor.execute(sql, (user_id,))
+            player_inventory = await cursor.fetchone()
 
-async def addItem(user_id: int, item: str, quantity: int):
-    async with aiosqlite.connect('quacky.db') as db:
-        item_cursor = await db.execute('SELECT * FROM items WHERE ItemName=?', (item,))
-        item_exists = await item_cursor.fetchone()
-        if item_exists:
-            inventory_cursor = await db.execute('SELECT Items FROM inventories WHERE UserId=?', (user_id,))
-            inventory = await inventory_cursor.fetchone()
-
-            if inventory:
-                inventory_dict = await convert_json_to_dict(inventory[0])
-            else:
-                inventory_dict = {}
+            if player_inventory is None:
+                sql = 'INSERT INTO inventories (UserId) VALUES (%s)'
+                await cursor.execute(sql, (user_id,))
             
-            if item in inventory_dict:
-                inventory_dict[item] += quantity
-            else:
-                inventory_dict[item] = quantity
-
-            inventory_json = json.dumps(inventory_dict)
-
-            await db.execute("UPDATE inventories SET Items=? WHERE UserId=?", (inventory_json, user_id))
-            await db.commit()
+            sql = 'SELECT * FROM wallets WHERE UserId=%s'
+            await cursor.execute(sql, (user_id,))
+            player_wallet = await cursor.fetchone()
             
-            return True
-        else:
-            return False
+            if player_wallet is None:
+                sql = 'INSERT INTO wallets (UserId) VALUES (%s)'
+                await cursor.execute(sql, (user_id,))
 
-async def removeItem(user_id: int, item: str, quantity: int = None):
-    async with aiosqlite.connect('quacky.db') as db:
-        item_cursor = await db.execute('SELECT * FROM items WHERE ItemName=?', (item,))
-        item_exists = await item_cursor.fetchone()
-        if item_exists:
-            async with db.execute("SELECT Items FROM inventories WHERE UserId=?", (user_id,)) as inventory_cursor:
-                inventory = await inventory_cursor.fetchone()
+            sql = 'SELECT * FROM profiles WHERE UserId=%s'
+            await cursor.execute(sql, (user_id,))
+            player_profile = await cursor.fetchone()
+            if player_profile is None:
+                sql = 'INSERT INTO profiles (UserId) VALUES (%s)'
+                await cursor.execute(sql, (user_id,))
+
+            await conn.commit()
+
+async def addItem(bot: commands.Bot, user_id: int, item: str, quantity: int):
+    async with bot.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            item_cursor = 'SELECT * FROM items WHERE ItemName=%s'
+            await cursor.execute(item_cursor, (item,))
+            if await cursor.fetchone():
+                sql = 'SELECT Items FROM inventories WHERE UserId=%s'
+                await cursor.execute(sql, (user_id,))
+                inventory = await cursor.fetchone()
+
                 if inventory:
-                    inventory_dict = await convert_json_to_dict(inventory[0])
+                    inventory_dict = await convert_json_to_dict(inventory['Items'])
+                else:
+                    inventory_dict = {}
+                
+                if item in inventory_dict:
+                    inventory_dict[item] += quantity
+                else:
+                    inventory_dict[item] = quantity
+
+                inventory_json = json.dumps(inventory_dict)
+
+                sql = 'UPDATE inventories SET Items=%s WHERE UserId=%s'
+                await cursor.execute(sql, (inventory_json, user_id))
+                await conn.commit()
+                
+                return True
+            else:
+                return False
+
+async def removeItem(bot: commands.Bot, user_id: int, item: str, quantity: int = None):
+    async with bot.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            item_cursor = 'SELECT * FROM items WHERE ItemName=%s'
+            await cursor.execute(item_cursor, (item,))
+            if await cursor.fetchone():
+                inventory_cursor = 'SELECT Items FROM inventories WHERE UserId=%s'
+                await cursor.execute(inventory_cursor, (user_id,))
+                inventory = await cursor.fetchone()
+                if inventory:
+                    inventory_dict = await convert_json_to_dict(inventory['Items'])
                 else:
                     inventory_dict = {}
                 
@@ -92,22 +105,26 @@ async def removeItem(user_id: int, item: str, quantity: int = None):
                 
                 inventory_json = json.dumps(inventory_dict)
 
-                await db.execute("UPDATE inventories SET Items=? WHERE UserId=?", (inventory_json, user_id))
-                await db.commit()
+                sql = 'UPDATE inventories SET Items=%s WHERE UserId=%s'
+                await cursor.execute(sql, (inventory_json, user_id))
+                await conn.commit()
                 
                 return True
-        else:
+            else:
                 return False
 
-async def hasItem(user_id: int, item: str):
-    async with aiosqlite.connect('quacky.db') as db:
-        item_cursor = await db.execute('SELECT * FROM items WHERE ItemName=?', (item,))
-        item_exists = await item_cursor.fetchone()
-        if item_exists:
-            async with db.execute("SELECT Items FROM inventories WHERE UserId=?", (user_id,)) as inventory_cursor:
-                inventory = await inventory_cursor.fetchone()
+async def hasItem(bot: commands.Bot, user_id: int, item: str):
+    async with bot.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            item_cursor = 'SELECT * FROM items WHERE ItemName=%s'
+            await cursor.execute(item_cursor, (item,))
+            item_exists = await cursor.fetchone()
+            if item_exists:
+                inventory_cursor = 'SELECT Items FROM inventories WHERE UserId=%s'
+                await cursor.execute(inventory_cursor, (user_id,))
+                inventory = await cursor.fetchone()
                 if inventory:
-                    inventory_dict = await convert_json_to_dict(inventory[0])
+                    inventory_dict = await convert_json_to_dict(inventory['Items'])
                 else:
                     inventory_dict = {}
                 
@@ -115,17 +132,21 @@ async def hasItem(user_id: int, item: str):
                     return True, inventory_dict[item]
                 else:
                     return False, 0
-        else:
-            return False, 0
+            else:
+                return False, 0
 
-async def listInventory(user_id: int):
-    async with aiosqlite.connect('quacky.db') as db:
-        player_cursor = await db.execute('SELECT * FROM inventories WHERE UserId=?', (user_id,))
-        player_inventory = await player_cursor.fetchone()
-        
-        inventory_dict = await convert_json_to_dict(player_inventory[2])
+async def listInventory(bot: commands.Bot, user_id: int):
+    async with bot.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            sql = "SELECT * FROM inventories WHERE UserId = %s"
+            await cursor.execute(sql, (user_id,))
+            player_inventory = await cursor.fetchone()
+            
+            print(player_inventory)
+            
+            inventory_dict = await convert_json_to_dict(player_inventory['Items'])
 
-        return inventory_dict
+            return inventory_dict
 
 async def logCommand(interaction: discord.Interaction, response: str = None):
     admin_guild = interaction.client.get_guild(admin_guild_id)

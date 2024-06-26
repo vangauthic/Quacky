@@ -1,6 +1,110 @@
 import aiosqlite
+import aiomysql
+import warnings
 
-async def check_tables():
+warnings.filterwarnings("ignore", category=aiomysql.Warning, message="Table '.*' already exists")
+
+async def check_tables(self):
+
+    async with self.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await conn.commit()
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS guilds (
+                GuildId INT PRIMARY KEY AUTO_INCREMENT,
+                GuildName VARCHAR(255),
+                GuildDescription TEXT,
+                GuildLevel INT,
+                GuildBoosts INT,
+                GuildMembers INT,
+                OwnerId INT,
+                CommandCooldown INT DEFAULT 30
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS guild_members (
+                MembershipId INT PRIMARY KEY AUTO_INCREMENT,
+                GuildName TEXT,
+                GuildID INT,
+                MemberID INT,
+                PrimaryID INT
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS guild_invites (
+                InviteId INT PRIMARY KEY AUTO_INCREMENT,
+                GuildId INT,
+                MessageId INT
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS profiles (
+                ProfileId INT PRIMARY KEY AUTO_INCREMENT,
+                UserId INT,
+                DisplayName TEXT,
+                Description TEXT,
+                Status TEXT,
+                DisplayPicture TEXT,
+                Thumbnail TEXT,
+                embedColor TEXT
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS inventories (
+                InvId INT PRIMARY KEY AUTO_INCREMENT,
+                UserId INT,
+                Items TEXT DEFAULT '{}'
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dimensions (
+                DimId INT PRIMARY KEY AUTO_INCREMENT,
+                DimName TEXT,
+                Blocks TEXT DEFAULT '{}',
+                Mobs TEXT DEFAULT '{}'
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS wallets (
+                WalletId INT PRIMARY KEY AUTO_INCREMENT,
+                UserId INT,
+                Coins INT DEFAULT 0
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shop (
+                ItemId INT PRIMARY KEY AUTO_INCREMENT,
+                ItemName TEXT,
+                SafeName TEXT,
+                Cost INT
+            )
+            """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS items (
+                ItemId INT PRIMARY KEY AUTO_INCREMENT,
+                ItemName TEXT,
+                SellValue INT DEFAULT 0,
+                CanSell INT DEFAULT 0,
+                CostValue INT DEFAULT 0,
+                CanBuy INT DEFAULT 0,
+                CanSmelt INT DEFAULT 0,
+                HarvestLevel INT DEFAULT 0,
+                Emoji TEXT DEFAULT ''
+            )
+            """)
+
+            await conn.commit()
+
+    return
     # Guilds
     async with aiosqlite.connect('guilds.db') as db:
         # Creates the "guilds" table
