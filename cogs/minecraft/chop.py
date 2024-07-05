@@ -82,7 +82,6 @@ class chop(commands.Cog):
             has_axe = await hasItem(self.bot, interaction.user.id, axe)
             if has_axe[0]:
                 treeLvl = level
-                break
 
         toChop = random.randint(4, 18) * (treeLvl / 1.5)
         toChop = math.ceil(toChop)

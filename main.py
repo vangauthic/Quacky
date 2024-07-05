@@ -27,6 +27,7 @@ initial_extensions = [
                       'cogs.minecraft.buy',
                       'cogs.minecraft.chop',
                       'cogs.minecraft.craft',
+                      'cogs.minecraft.fish',
                       'cogs.minecraft.help',
                       'cogs.minecraft.hunt',
                       'cogs.minecraft.inventory',
