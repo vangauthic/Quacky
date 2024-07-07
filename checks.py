@@ -74,7 +74,7 @@ async def check_tables(self):
             await cursor.execute("""
             CREATE TABLE IF NOT EXISTS wallets (
                 WalletId INT PRIMARY KEY AUTO_INCREMENT,
-                UserId INT,
+                UserId BIGINT,
                 Coins INT DEFAULT 0
             )
             """)
@@ -98,9 +98,23 @@ async def check_tables(self):
                 CanBuy INT DEFAULT 0,
                 CanSmelt INT DEFAULT 0,
                 HarvestLevel INT DEFAULT 0,
-                Emoji TEXT DEFAULT ''
+                Emoji TEXT DEFAULT '',
+                Tag TEXT DEFAULT '',
+                CanTrade INT DEFAULT 0,
+                TradePrice BIGINT DEFAULT 0,
+                SmeltedItem TEXT DEFAULT ''
             )
             """)
+
+            await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS server_settings (
+                ID INT PRIMARY KEY AUTO_INCREMENT,
+                serverID BIGINT,
+                botChannel BIGINT,
+                enabled INT DEFAULT 0
+            )
+            """)
+
 
             await conn.commit()
 

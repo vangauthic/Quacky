@@ -4,7 +4,8 @@ import yaml
 
 from discord import app_commands
 from discord.ext import commands
-from utils import removeItem, convert_json_to_dict, checkPlayer, logCommand
+from typing import Optional
+from utils import removeItem, convert_json_to_dict, checkPlayer, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -32,45 +33,60 @@ class sell(commands.Cog):
 
     #Sell command
     @app_commands.command(name="sell", description="Sell your items")
-    @app_commands.describe(item="The name of the item", amount="The amount to sell")
-    async def sell(self, interaction: discord.Interaction, item: str, amount: int):
-         await checkPlayer(self.bot, interaction.user.id)
-         async with self.bot.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                inventory_cursor = 'SELECT * FROM inventories WHERE UserID=%s'
-                await cursor.execute(inventory_cursor, (interaction.user.id,))
-                inventory = await cursor.fetchone()
-                if not inventory:
-                    sql = 'INSERT INTO inventories (UserId) VALUES (%s)'
-                    await cursor.execute(sql, (interaction.user.id,))
-                    await conn.commit()
-                
-                sell_cursor = 'SELECT * FROM items WHERE CanSell=1 AND ItemName=%s'
-                await cursor.execute(sell_cursor, (item,))
-                itemVals = await cursor.fetchone()
+    @app_commands.describe(item="The name of the item")
+    @app_commands.describe(amount="The amount to sell")
+    async def sell(self, interaction: discord.Interaction, item: str, amount: Optional[int]):
+         if await checkServer(self.bot, interaction.guild.id):
+            item = item.title()
+            if amount is None:
+                amount = 1
 
-                if itemVals:
-                    inv = await convert_json_to_dict(inventory['Items'])
-
-                    if inv[item] >= amount:
-                        sellValue = itemVals['SellValue']
-                        itemName = itemVals['ItemName']
-                        itemEmoji = itemVals['Emoji']
-                        earned = sellValue * amount
-
-                        sql = 'UPDATE wallets SET Coins=Coins+%s WHERE UserId=%s'
-                        await cursor.execute(sql, (earned, interaction.user.id))
-                        await removeItem(self.bot, interaction.user.id, item, amount)
+            await checkPlayer(self.bot, interaction.user.id)
+            async with self.bot.pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    inventory_cursor = 'SELECT * FROM inventories WHERE UserID=%s'
+                    await cursor.execute(inventory_cursor, (interaction.user.id,))
+                    inventory = await cursor.fetchone()
+                    if not inventory:
+                        sql = 'INSERT INTO inventories (UserId) VALUES (%s)'
+                        await cursor.execute(sql, (interaction.user.id,))
                         await conn.commit()
+                    
+                    sell_cursor = 'SELECT * FROM items WHERE CanSell=1 AND ItemName=%s'
+                    await cursor.execute(sell_cursor, (item,))
+                    itemVals = await cursor.fetchone()
 
-                        embed = discord.Embed(title=f"{logo_emoji} Item(s) Sold", description=f"You sold **{amount}** {itemEmoji} {itemName} for **${f"{earned:,}**"}", color=discord.Color.from_str(minecraft_color))
+                    if itemVals:
+                        inv = await convert_json_to_dict(inventory['Items'])
+
+                        if inv[item] >= amount:
+                            sellValue = itemVals['SellValue']
+                            itemName = itemVals['ItemName']
+                            itemEmoji = itemVals['Emoji']
+                            earned = sellValue * amount
+
+                            sql = 'UPDATE wallets SET Coins=Coins+%s WHERE UserId=%s'
+                            await cursor.execute(sql, (earned, interaction.user.id))
+                            await removeItem(self.bot, interaction.user.id, item, amount)
+                            await conn.commit()
+
+                            embed = discord.Embed(title=f"Item(s) Sold", description=f"You sold **{amount}** {itemEmoji} {itemName} for **${f"{earned:,}**"}", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                        else:
+                            embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"You do not have enough of **{item}** to sell that much!", color=discord.Color.red())
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                     else:
-                        embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"You do not have enough of **{item}** to sell that much!", color=discord.Color.red())
-                else:
-                    embed = discord.Embed(title=f"{logo_emoji} Bad Item", description=f"The item, **{item}**, does not exist!", color=discord.Color.red())
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                        embed = discord.Embed(title=f"Bad Item", description=f"The item, **{item}**, does not exist!", color=discord.Color.red())
+                        embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-            await logCommand(interaction)
+                await logCommand(interaction)
+         else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                description="This server currently has the Quacky-3000 Minigame disabled.",
+                                color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @sell.autocomplete("item")
     async def sell_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

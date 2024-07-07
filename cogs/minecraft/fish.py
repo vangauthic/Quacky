@@ -6,7 +6,7 @@ import asyncio
 
 from discord import app_commands
 from discord.ext import commands
-from utils import addItem, checkPlayer, hasItem, logCommand
+from utils import addItem, checkPlayer, hasItem, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -43,51 +43,62 @@ class fish(commands.Cog):
     @app_commands.command(name="fish", description="Catch some fish!")
     @app_commands.checks.cooldown(1, 30.0, key=lambda i: (i.id, i.user.id))
     async def fish(self, interaction: discord.Interaction):
-        await checkPlayer(self.bot, interaction.user.id)
-        
-        has_rod = await hasItem(self.bot, interaction.user.id, 'Fishing Rod')
-
-        if has_rod[0]:
-            ocean = """
-                    """
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
             
-            choices = ['<:water_fish:1258845763606286359>', '<:water:1258845762591395914>']
+            has_rod = await hasItem(self.bot, interaction.user.id, 'Fishing Rod')
 
-            for letter in start:
-                if letter == 'X':
-                    ocean += random.choice(choices)
-                else:
-                    ocean += letter
+            if has_rod[0]:
+                ocean = """
+                        """
+                
+                choices = ['<:water_fish:1258845763606286359>', '<:water:1258845762591395914>']
 
-            numFish = ocean.count('<:water_fish:1258845763606286359>')
-            print(numFish)
-            toGet = math.ceil(numFish / 3)
+                for letter in start:
+                    if letter == 'X':
+                        ocean += random.choice(choices)
+                    else:
+                        ocean += letter
 
-            embed = discord.Embed(title=f"{logo_emoji} Fishing", description=f"Count the number of fish!", color=discord.Color.from_str(minecraft_color))
-            await interaction.response.send_message(content=ocean, embed=embed, ephemeral=True)
+                numFish = ocean.count('<:water_fish:1258845763606286359>')
+                print(numFish)
+                toGet = math.ceil(numFish / 3)
 
-            def check(message):
-                return message.channel == interaction.channel and message.author == interaction.user
+                embed = discord.Embed(title=f"Fishing", description=f"Count the number of fish!", color=discord.Color.from_str(minecraft_color))
+                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                await interaction.response.send_message(content=ocean, embed=embed, ephemeral=True)
+
+                def check(message):
+                    return message.channel == interaction.channel and message.author == interaction.user
+                
+                try:
+                    answer = await self.bot.wait_for('message', check=check, timeout=60.0)
+                except asyncio.TimeoutError:
+                    embed = discord.Embed(title=f"Fishing", description="You took too long! The fish swam away!", color=discord.Color.from_str(minecraft_color))
+                    embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                    await interaction.edit_original_response(embed=embed, content='')
+                    return
+                
+                if answer.content == str(numFish):
+                    await answer.delete()
+                    await addItem(self.bot, interaction.user.id, 'Raw Fish', toGet)
+                    embed = discord.Embed(title=f"Fishing", description=f"You caught **{toGet}** fish!", color=discord.Color.from_str(minecraft_color))
+                    embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                    await interaction.edit_original_response(embed=embed, content='')
+
+            else:
+                embed = discord.Embed(title=f"Fishing", description=f"You don't have a Fishing Rod! Type **/shop** to buy one!", color=discord.Color.from_str(minecraft_color))
+                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                await interaction.response.send_message(embed=embed)
             
-            try:
-                answer = await self.bot.wait_for('message', check=check, timeout=60.0)
-            except asyncio.TimeoutError:
-                embed = discord.Embed(title=f"{logo_emoji} Fishing", description="You took too long! The fish swam away!", color=discord.Color.from_str(minecraft_color))
-                await interaction.edit_original_response(embed=embed, content='')
-                return
-            
-            if answer.content == str(numFish):
-                await answer.delete()
-                await addItem(self.bot, interaction.user.id, 'Raw Fish', toGet)
-                embed = discord.Embed(title=f"{logo_emoji} Fishing", description=f"You caught **{toGet}** fish!", color=discord.Color.from_str(minecraft_color))
-                await interaction.edit_original_response(embed=embed, content='')
 
+            await logCommand(interaction)
         else:
-            embed = discord.Embed(title=f"{logo_emoji} Fishing", description=f"You don't have a Fishing Rod! Type **/shop** to buy one!", color=discord.Color.from_str(minecraft_color))
-            await interaction.response.send_message(embed=embed)
-        
-
-        await logCommand(interaction)
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(fish(bot))

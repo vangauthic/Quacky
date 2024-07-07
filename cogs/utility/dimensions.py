@@ -148,7 +148,8 @@ class DimensionCog(commands.GroupCog, name="dimension"):
     @app_commands.describe(mob="The mob name")
     @app_commands.describe(drop="The item the mob drops")
     @app_commands.describe(health="The mob health")
-    async def dimension_addmob(self, interaction: discord.Interaction, name: str, mob: str, drop: str, health: int) -> None:
+    @app_commands.describe(image="The mob image")
+    async def dimension_addmob(self, interaction: discord.Interaction, name: str, mob: str, drop: str, health: int, image: str) -> None:
         await checkPlayer(self. bot, interaction.user.id)
         await interaction.response.defer(thinking=True, ephemeral=True)
 
@@ -168,13 +169,13 @@ class DimensionCog(commands.GroupCog, name="dimension"):
                             embed = discord.Embed(title=f"{logo_emoji} Item Doesn't Exist", description=f"**{drop}** doesn't exist!", color=admin_color)
                             await interaction.followup.send(embed=embed)
                         else:
-                            mob_dict = await convert_json_to_dict(dimension[3])
+                            mob_dict = await convert_json_to_dict(dimension['Mobs'])
 
                             if mob in mob_dict:
                                 embed = discord.Embed(title=f"{logo_emoji} Mob Already In Dimension", description=f"**{mob}** already exsists in the dimension **{name}**!", color=admin_color)
                                 await interaction.followup.send(embed=embed)
                             else:
-                                mob_dict[mob] = [drop, health]
+                                mob_dict[mob] = [drop, health, image]
                                 mob_json = json.dumps(mob_dict)
                                 sql = 'UPDATE dimensions SET Mobs=%s WHERE DimName=%s'
                                 await cursor.execute(sql, (mob_json, name))

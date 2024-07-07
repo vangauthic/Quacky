@@ -4,7 +4,7 @@ import yaml
 
 from discord import app_commands
 from discord.ext import commands
-from utils import listInventory, checkPlayer, logCommand
+from utils import listInventory, checkPlayer, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -33,30 +33,39 @@ class inventory(commands.Cog):
     #Inventory command
     @app_commands.command(name="inventory", description="View your items!")
     async def inventory(self, interaction: discord.Interaction):
-        await checkPlayer(self.bot, interaction.user.id)
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        async with self.bot.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                inventory = await listInventory(self.bot, interaction.user.id)
-                if inventory != {}:
-                    description = ""
-                    for item, quantity in inventory.items():
-                        sql = 'SELECT Emoji FROM items WHERE ItemName=%s'
-                        await cursor.execute(sql, (item,))
-                        emoji = await cursor.fetchone() #misclick of hell, but /inventory works now
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
+            await interaction.response.defer(thinking=True, ephemeral=True)
+            async with self.bot.pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    inventory = await listInventory(self.bot, interaction.user.id)
+                    if inventory != {}:
+                        description = ""
+                        for item, quantity in inventory.items():
+                            sql = 'SELECT Emoji FROM items WHERE ItemName=%s'
+                            await cursor.execute(sql, (item,))
+                            emoji = await cursor.fetchone() #misclick of hell, but /inventory works now
 
-                        if emoji:
-                            description += f"{emoji['Emoji']} **{item}**: {quantity}\n"
-                        else:
-                            description += f"**{item}**: {quantity}\n"
-                    
-                    embed = discord.Embed(title=f"{logo_emoji} Inventory", description=description, color=discord.Color.from_str(minecraft_color))
-                else:
-                    embed = discord.Embed(title=f"{logo_emoji} Nil Inventory", description=f"You do not have an inventory!", color=discord.Color.from_str(minecraft_color))
+                            if emoji:
+                                description += f"{emoji['Emoji']} **{item}**: {quantity}\n"
+                            else:
+                                description += f"**{item}**: {quantity}\n"
+                        
+                        embed = discord.Embed(title=f"{interaction.user.name}'s Inventory", description=description, color=discord.Color.from_str(minecraft_color))
+                        embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                    else:
+                        embed = discord.Embed(title=f"Nil Inventory", description=f"You do not have an inventory!", color=discord.Color.from_str(minecraft_color))
+                        embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
 
-                await interaction.followup.send(embed=embed)
+                    await interaction.followup.send(embed=embed)
 
-        await logCommand(interaction)
+            await logCommand(interaction)
+        else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(inventory(bot))

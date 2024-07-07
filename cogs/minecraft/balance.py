@@ -4,7 +4,7 @@ import yaml
 
 from discord import app_commands
 from discord.ext import commands
-from utils import checkPlayer, logCommand
+from utils import checkPlayer, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -33,26 +33,34 @@ class balance(commands.Cog):
     #Balance command
     @app_commands.command(name="balance", description="View your balance")
     async def balance(self, interaction: discord.Interaction):
-        await checkPlayer(self.bot, interaction.user.id)
-        async with self.bot.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                sql = 'SELECT * FROM wallets WHERE UserId=%s'
-                await cursor.execute(sql, (interaction.user.id,))
-                wallet = await cursor.fetchone()
-                if wallet is None:
-                    sql = 'INSERT INTO wallets (UserId, Coins) VALUES (%s,%s)'
-                    await cursor.execute(sql, (interaction.user.id, 0))
-                    await conn.commit()
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
+            async with self.bot.pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    sql = 'SELECT * FROM wallets WHERE UserId=%s'
+                    await cursor.execute(sql, (interaction.user.id,))
+                    wallet = await cursor.fetchone()
+                    if wallet is None:
+                        sql = 'INSERT INTO wallets (UserId, Coins) VALUES (%s,%s)'
+                        await cursor.execute(sql, (interaction.user.id, 0))
+                        await conn.commit()
 
-                sql = 'SELECT * FROM wallets WHERE UserId=%s'
-                await cursor.execute(sql, (interaction.user.id,))
-                wallet = await cursor.fetchone()
-                balance = wallet['Coins']
+                    sql = 'SELECT * FROM wallets WHERE UserId=%s'
+                    await cursor.execute(sql, (interaction.user.id,))
+                    wallet = await cursor.fetchone()
+                    balance = wallet['Coins']
 
-                main = discord.Embed(title=f"{logo_emoji} Wallet", description=f"You have **${f"{balance:,}"}**", color=discord.Color.from_str(minecraft_color))
+                    main = discord.Embed(title=f"Wallet", description=f"You have **${f"{balance:,}"}**", color=discord.Color.from_str(minecraft_color))
+                    main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
 
-        await interaction.response.send_message(embed=main, ephemeral=True)
-        await logCommand(interaction)
+            await interaction.response.send_message(embed=main, ephemeral=True)
+            await logCommand(interaction)
+        else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(balance(bot))

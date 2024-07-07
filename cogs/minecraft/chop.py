@@ -5,7 +5,7 @@ import math
 
 from discord import app_commands
 from discord.ext import commands
-from utils import addItem, checkPlayer, hasItem, logCommand
+from utils import addItem, checkPlayer, hasItem, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -26,6 +26,9 @@ rocks = data["Rocks"]
 recipes = data["Recipes"]
 
 cooldown = 30
+treeUrl = 'https://i.postimg.cc/rF0qLL9x/oak.webp'
+cutTreeUrl = 'https://i.postimg.cc/wTngxTxg/oak.png'
+button = "`CHOP`"
 
 #Tree Chop
 class chopTree(discord.ui.View):
@@ -41,7 +44,8 @@ class chopTree(discord.ui.View):
         if self.toChop <= 0:
             self.toChop = 0
             await addItem(self.bot, interaction.user.id, 'Log', self.initialTree)
-            main = discord.Embed(title=f"{logo_emoji} Lumberyard", description=f'\n\nYou have harvested the tree and gained **{self.initialTree}** wood!', color=discord.Color.from_str(minecraft_color))
+            main = discord.Embed(title=f"Lumberyard", description=f'\n\n### You have harvested the tree and gained __**{self.initialTree}**__ wood!', color=discord.Color.from_str(minecraft_color))
+            main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
             view = chopTree(self.bot, self.treeLvl, self.toChop)
             view.chop.disabled = True
             await interaction.response.edit_message(embed=main, view=view)
@@ -50,12 +54,15 @@ class chopTree(discord.ui.View):
             if self.toChop <= 0:
                 self.toChop = 0
                 await addItem(self.bot, interaction.user.id, 'Log', self.initialTree)
-                main = discord.Embed(title=f"{logo_emoji} Lumberyard", description=f'\n\nYou have harvested the tree and gained **{self.initialTree}** wood!', color=discord.Color.from_str(minecraft_color))
+                main = discord.Embed(title=f"Lumberyard", description=f'\n\n### You have harvested the tree and gained __**{self.initialTree}**__ wood!', color=discord.Color.from_str(minecraft_color))
+                main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                 view = chopTree(self.bot, self.treeLvl, self.toChop)
                 view.chop.disabled = True
                 await interaction.response.edit_message(embed=main, view=view)
             else:
-                main = discord.Embed(title=f"{logo_emoji} Lumberyard", description=f'\n\nPress the button below to keep chopping! Chops Left: **{self.toChop}**', color=discord.Color.from_str(minecraft_color))
+                main = discord.Embed(title=f"Lumberyard", description=f'\n\n### Press the `CHOP` button to keep chopping!\n Chops Left: __**{self.toChop}**__', color=discord.Color.from_str(minecraft_color))
+                main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                main.set_image(url=treeUrl)
                 await interaction.response.edit_message(embed=main)
 
 class chop(commands.Cog):
@@ -66,35 +73,45 @@ class chop(commands.Cog):
     @app_commands.command(name="chop", description="Chop trees for wood!")
     @app_commands.checks.cooldown(1, 30.0, key=lambda i: (i.id, i.user.id))
     async def chop(self, interaction: discord.Interaction):
-        await checkPlayer(self.bot, interaction.user.id)
-        
-        treeLvl = 1
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
+            
+            treeLvl = 1
 
-        axe_levels = {
-                'Wooden Axe': 2,
-                'Stone Axe': 3,
-                'Iron Axe': 4,
-                'Diamond Axe': 5,
-                'Netherite Axe': 6
-            }
+            axe_levels = {
+                    'Wooden Axe': 2,
+                    'Stone Axe': 3,
+                    'Iron Axe': 4,
+                    'Diamond Axe': 5,
+                    'Netherite Axe': 6
+                }
 
-        for axe, level in axe_levels.items():
-            has_axe = await hasItem(self.bot, interaction.user.id, axe)
-            if has_axe[0]:
-                treeLvl = level
+            for axe, level in axe_levels.items():
+                has_axe = await hasItem(self.bot, interaction.user.id, axe)
+                if has_axe[0]:
+                    treeLvl = level
 
-        toChop = random.randint(4, 18) * (treeLvl / 1.5)
-        toChop = math.ceil(toChop)
-        if toChop > 36:
-            toChop = 36
-        if treeLvl > 0:
-            main = discord.Embed(title=f"{logo_emoji} Lumberyard", description=f'\n\nPress the button below to start choppping! Chops Left: **{toChop}**', color=discord.Color.from_str(minecraft_color))
-            await interaction.response.send_message(embed=main, view=chopTree(self.bot, treeLvl, toChop), ephemeral=True) #change to pretty embed later
+            toChop = random.randint(4, 18) * (treeLvl / 1.5)
+            toChop = math.ceil(toChop)
+            if toChop > 36:
+                toChop = 36
+            if treeLvl > 0:
+                main = discord.Embed(title=f"Lumberyard", description=f'\n\n### Press the `CHOP` button to start chopping!\n Chops Left: __**{toChop}**__', color=discord.Color.from_str(minecraft_color))
+                main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                main.set_image(url=treeUrl)
+                await interaction.response.send_message(embed=main, view=chopTree(self.bot, treeLvl, toChop), ephemeral=True) #change to pretty embed later
+            else:
+                main = discord.Embed(title=f"Lumberyard", description=f'\n\nYou need to buy an axe!', color=discord.Color.from_str(minecraft_color))
+                main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                await interaction.response.send_message(embed=main, ephemeral=True)
+
+            await logCommand(interaction)
         else:
-            main = discord.Embed(title=f"{logo_emoji} Lumberyard", description=f'\n\nYou need to buy an axe!', color=discord.Color.from_str(minecraft_color))
-            await interaction.response.send_message(embed=main, ephemeral=True)
-
-        await logCommand(interaction)
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(chop(bot))

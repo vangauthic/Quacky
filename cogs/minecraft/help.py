@@ -3,7 +3,7 @@ import yaml
 
 from discord import app_commands
 from discord.ext import commands
-from utils import checkPlayer, logCommand
+from utils import checkPlayer, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -32,11 +32,19 @@ class help(commands.Cog):
     #Help command
     @app_commands.command(name="help", description="Get started with Quacky-3000")
     async def help(self, interaction: discord.Interaction):
-        await checkPlayer(self.bot, interaction.user.id)
-        main = discord.Embed(title=f"{logo_emoji} Quacky-3000", description=f'\n\n**:dollar: Making Money**\nType **/chop** to start harvesting wood and build your empire!\n\n**:shopping_cart: Buying Items**\nType **/shop** to view the items for sale and **/buy** to purchase them!', color=0xFFFFFF)
-        await interaction.response.send_message(embed=main, ephemeral=True)
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
+            main = discord.Embed(title=f"Quacky-3000", description=f'\n\n**:dollar: Making Money**\nType **/chop** to start harvesting wood and build your empire!\n\n**:shopping_cart: Buying Items**\nType **/shop** to view the items for sale and **/buy** to purchase them!', color=0xFFFFFF)
+            main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=main, ephemeral=True)
 
-        await logCommand(interaction)
+            await logCommand(interaction)
+        else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(help(bot))

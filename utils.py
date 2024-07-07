@@ -175,3 +175,16 @@ async def hasAdmin(interaction: discord.Interaction):
         return True
     else:
         return False
+    
+async def checkServer(bot: commands.Bot, serverID: int):
+    async with bot.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            sql = "SELECT * FROM server_settings WHERE serverID = %s"
+            await cursor.execute(sql, (serverID,))
+            server_settings = await cursor.fetchone()
+            enabled = server_settings['enabled']
+            
+            if enabled == 1:
+                return True
+            else:
+                return False

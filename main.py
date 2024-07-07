@@ -46,6 +46,8 @@ initial_extensions = [
                       'cogs.utility.grabid',
                       'cogs.utility.info',
                       'cogs.utility.pfp',
+                      'cogs.utility.register',
+                      'cogs.utility.settings',
                       'cogs.utility.takecoins',
                       'cogs.utility.takeitem',
 
@@ -173,5 +175,20 @@ async def on_app_command_error(interaction, error):
         await interaction.response.send_message(f"This is on cooldown for the next {time}s.", ephemeral=True)
         return
     raise error
+
+#Add server to server_settings
+@client.event
+async def on_guild_join(guild):
+    async with client.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            sql = 'SELECT * FROM server_settings WHERE serverID=%s'
+            await cursor.execute(sql, (guild.id,))
+            server_settings = await cursor.fetchone()
+
+            if server_settings is None:
+                sql = 'INSERT INTO server_settings (serverID) VALUES (%s)'
+                await cursor.execute(sql, (guild.id,))
+                await conn.commit()
+
 
 client.run(token)

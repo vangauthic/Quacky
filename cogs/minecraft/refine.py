@@ -2,11 +2,12 @@ import discord
 import aiomysql
 import asyncio
 import yaml
+import math
 
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timedelta
-from utils import addItem, removeItem, convert_json_to_dict, checkPlayer, hasItem, logCommand
+from utils import addItem, removeItem, convert_json_to_dict, checkPlayer, hasItem, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -57,100 +58,120 @@ class refine(commands.Cog):
     @app_commands.describe(item="The name of the item", amount="The amount to refine")
     @app_commands.checks.cooldown(1, 15.0, key=lambda i: (i.guild_id, i.user.id))
     async def refine(self, interaction: discord.Interaction, item: str, amount: int):
-       await checkPlayer(self.bot, interaction.user.id)
-       async with self.bot.pool.acquire() as conn:
-           async with conn.cursor(aiomysql.DictCursor) as cursor:
-                if await hasItem(interaction.user.id, "Furnace"):
-                    inventory_cursor = 'SELECT * FROM inventories WHERE UserID=%s'
-                    await cursor.execute(inventory_cursor, (interaction.user.id,))
-                    inventory = await cursor.fetchone()
+       if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
+            async with self.bot.pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                        furnaceCheck = await hasItem(self.bot, interaction.user.id, "Furnace")
+                        if furnaceCheck[0]:
+                            inventory_cursor = 'SELECT * FROM inventories WHERE UserID=%s'
+                            await cursor.execute(inventory_cursor, (interaction.user.id,))
+                            inventory = await cursor.fetchone()
 
-                    ecurs1 = 'SELECT * FROM items WHERE ItemName=%s'
-                    await cursor.execute(ecurs1, ('Coal',))
-                    emoji1 = await cursor.fetchone()
-                    emoji1 = emoji1['Emoji']
+                            ecurs1 = 'SELECT * FROM items WHERE ItemName=%s'
+                            await cursor.execute(ecurs1, ('Coal',))
+                            emoji1 = await cursor.fetchone()
+                            emoji1 = emoji1['Emoji']
 
-                    ecurs2 = 'SELECT * FROM items WHERE ItemName=%s'
-                    await cursor.execute(ecurs2, (item,))
-                    emojiRaw = await cursor.fetchone()
-                    emojiRaw = emojiRaw['Emoji']
+                            ecurs2 = 'SELECT * FROM items WHERE ItemName=%s'
+                            await cursor.execute(ecurs2, (item,))
+                            emojiRaw = await cursor.fetchone()
+                            emojiRaw = emojiRaw['Emoji']
 
-                    inv = await convert_json_to_dict(inventory['Items'])
+                            inv = await convert_json_to_dict(inventory['Items'])
 
-                    if "Coal" in inv:
-                        userCoal = inv["Coal"]
-                    else:
-                        embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"\n\nYou have **NO** {emoji1} Coal!", color=discord.Color.from_str(minecraft_color))
-                        await interaction.response.send_message(embed=embed, ephemeral=True)
-                        return 
+                            if "Coal" in inv:
+                                userCoal = inv["Coal"]
+                            else:
+                                embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"\n\nYou have **NO** {emoji1} Coal!", color=discord.Color.from_str(minecraft_color))
+                                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                                await interaction.response.send_message(embed=embed, ephemeral=True)
+                                return 
 
-                    if item in inv:
-                        userItems = inv[item]
-                    else:
-                        embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"\n\nYou have **NO** {emojiRaw} {item}!", color=discord.Color.from_str(minecraft_color))
-                        await interaction.response.send_message(embed=embed, ephemeral=True)
-                        return 
+                            if item in inv:
+                                userItems = inv[item]
+                            else:
+                                embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"\n\nYou have **NO** {emojiRaw} {item}!", color=discord.Color.from_str(minecraft_color))
+                                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                                await interaction.response.send_message(embed=embed, ephemeral=True)
+                                return 
 
-                    refinable_items = ["Copper Ore", "Iron Ore", "Silver Ore", "Gold Ore", "Cobblestone"]
+                            item_select = 'SELECT * FROM items WHERE CanSmelt=True'
+                            await cursor.execute(item_select)
+                            items = await cursor.fetchall()
+                            refinable_items = str(items)
 
-                    if item in refinable_items:
-                        if userItems:
-                            wantSmelt = amount
-                            if userItems >= wantSmelt:
-                                reqCoal = (wantSmelt / 8)
-                                if reqCoal < 1:
-                                    reqCoal = 1
-                                if userCoal >= reqCoal:
-                                    await removeItem(self.bot, interaction.user.id, "Coal", reqCoal)
-                                    await removeItem(self.bot, interaction.user.id, item, wantSmelt)
+                            if item in refinable_items:
+                                if userItems:
+                                    wantSmelt = amount
+                                    if userItems >= wantSmelt:
+                                        reqCoal = math.ceil(wantSmelt / 8)
+                                        if reqCoal < 1:
+                                            reqCoal = 1
+                                        if userCoal >= reqCoal:
+                                            await removeItem(self.bot, interaction.user.id, "Coal", reqCoal)
+                                            await removeItem(self.bot, interaction.user.id, item, wantSmelt)
 
-                                    if item.split()[0] == "Cobblestone":
-                                        refinedItem = f"Stone"
-                                    else:
-                                        refinedItem = f"{item.split()[0]} Ingot"
+                                            ref_select = 'SELECT * FROM items WHERE ItemName=%s'
+                                            await cursor.execute(ref_select, (item,))
+                                            ref_item = await cursor.fetchone()
+                                            refinedItem = ref_item['SmeltedItem']
 
-                                    ecurs3 = 'SELECT * FROM items WHERE ItemName=%s'
-                                    await cursor.execute(ecurs3, (refinedItem,))
-                                    emojiRefine = await cursor.fetchone()
-                                    emojiRefine = emojiRefine['Emoji']
-                                    
-                                    ts = datetime.now() + timedelta(seconds=10)
-                                    timestamp = int(ts.timestamp())
+                                            ecurs3 = 'SELECT * FROM items WHERE ItemName=%s'
+                                            await cursor.execute(ecurs3, (refinedItem,))
+                                            emojiRefine = await cursor.fetchone()
+                                            emojiRefine = emojiRefine['Emoji']
+                                            
+                                            ts = datetime.now() + timedelta(seconds=10)
+                                            timestamp = int(ts.timestamp())
 
-                                    for x in range(1, 11):
-                                        percentage = x * 10
+                                            for x in range(1, 11):
+                                                percentage = x * 10
 
-                                        progress_bar = generate_progress_bar(percentage)
+                                                progress_bar = generate_progress_bar(percentage)
 
-                                        embed = discord.Embed(title=f"{logo_emoji} Items Smelted", description=f"\n\nYou are smelting {wantSmelt} {emojiRaw} **{item}** into {wantSmelt} {emojiRefine} **{refinedItem}** in {10 - x} seconds!\n{progress_bar}", color=discord.Color.from_str(minecraft_color))
-                                        
-                                        if x == 1:
-                                            await interaction.response.send_message(embed=embed, ephemeral=True)
-                                        else:
+                                                embed = discord.Embed(title=f"Items Smelted", description=f"\n\nYou are smelting {wantSmelt} {emojiRaw} **{item}** into {wantSmelt} {emojiRefine} **{refinedItem}** in {10 - x} seconds!\n{progress_bar}", color=discord.Color.from_str(minecraft_color))
+                                                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                                                
+                                                if x == 1:
+                                                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                                                else:
+                                                    await interaction.edit_original_response(embed=embed)
+                                                await asyncio.sleep(1)
+
+                                            await addItem(self.bot, interaction.user.id, refinedItem, wantSmelt)
+                                            
+                                            embed = discord.Embed(title=f"Items Smelted", description=f"\n\nYou have turned {wantSmelt} {emojiRaw} **{item}** into {wantSmelt} {emojiRefine} **{refinedItem}**!", color=discord.Color.from_str(minecraft_color))
+                                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                                             await interaction.edit_original_response(embed=embed)
-                                        await asyncio.sleep(1)
-
-                                    await addItem(self.bot, interaction.user.id, refinedItem, wantSmelt)
-                                    
-                                    embed = discord.Embed(title=f"{logo_emoji} Items Smelted", description=f"\n\nYou have turned {wantSmelt} {emojiRaw} **{item}** into {wantSmelt} {emojiRefine} **{refinedItem}**!", color=discord.Color.from_str(minecraft_color))
-                                    await interaction.edit_original_response(embed=embed)
+                                        else:
+                                            embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"\n\nYou do not have enough {emoji1} Coal!", color=discord.Color.from_str(minecraft_color))
+                                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                                            await interaction.response.send_message(embed=embed, ephemeral=True)
+                                    else:
+                                        embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"\n\nYou do not have enough {emojiRaw} **{item}**!", color=discord.Color.from_str(minecraft_color))
+                                        embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                                        await interaction.response.send_message(embed=embed, ephemeral=True)
                                 else:
-                                    embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"\n\nYou do not have enough {emoji1} Coal!", color=discord.Color.from_str(minecraft_color))
+                                    embed = discord.Embed(title=f"Invalid Item", description=f"\n\n{emojiRaw} {item} is not in your inventory or does not exist!", color=discord.Color.from_str(minecraft_color))
+                                    embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                                     await interaction.response.send_message(embed=embed, ephemeral=True)
                             else:
-                                embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"\n\nYou do not have enough {emojiRaw} **{item}**!", color=discord.Color.from_str(minecraft_color))
+                                embed = discord.Embed(title=f"Invalid Item", description=f"\n\n{emojiRaw} {item} can not be smelted!", color=discord.Color.from_str(minecraft_color))
+                                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                                 await interaction.response.send_message(embed=embed, ephemeral=True)
                         else:
-                            embed = discord.Embed(title=f"{logo_emoji} Invalid Item", description=f"\n\n{emojiRaw} {item} is not in your inventory or does not exist!", color=discord.Color.from_str(minecraft_color))
+                            embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"\n\nYou don't have a furnace! Type **/recipe** to craft one!", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                             await interaction.response.send_message(embed=embed, ephemeral=True)
-                    else:
-                        embed = discord.Embed(title=f"{logo_emoji} Invalid Item", description=f"\n\n{emojiRaw} {item} can not be smelted!", color=discord.Color.from_str(minecraft_color))
-                        await interaction.response.send_message(embed=embed, ephemeral=True)
-                else:
-                    embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"\n\nYou don't have a furnace! Type **/recipe** to craft one!", color=discord.Color.from_str(minecraft_color))
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-       await logCommand(interaction)
+            await logCommand(interaction)
+       else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @refine.autocomplete("item")
     async def refine_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

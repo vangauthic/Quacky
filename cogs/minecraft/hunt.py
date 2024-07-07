@@ -5,12 +5,13 @@ import random
 import yaml
 import math
 import secrets
+import json
 import string
 
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timedelta
-from utils import addItem, removeItem, listInventory, convert_json_to_dict, checkPlayer, hasItem, logCommand
+from utils import addItem, removeItem, listInventory, convert_json_to_dict, checkPlayer, hasItem, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -49,82 +50,96 @@ class hunt(commands.Cog):
     @app_commands.describe(dim="The dimension name")
     @app_commands.checks.cooldown(1, 1.0, key=lambda i: (i.guild_id, i.user.id))
     async def hunt(self, interaction: discord.Interaction, dim: str):
-        await checkPlayer(self.bot, interaction.user.id) 
-            
-        embed = discord.Embed(title=f"{logo_emoji} Hunt", description="Loading...", color=discord.Color.from_str(minecraft_color))
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id) 
+                
+            embed = discord.Embed(title=f"Hunt", description="Loading...", color=discord.Color.from_str(minecraft_color))
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        async with self.bot.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                sql = 'SELECT * FROM dimensions WHERE DimName=%s'
-                if await cursor.execute(sql, (dim,)):
-                    mobs_cursor = 'SELECT * FROM dimensions WHERE DimName=%s'
-                    await cursor.execute(mobs_cursor, (dim,))
-                    mob = await cursor.fetchone()
-                    mob = await convert_json_to_dict(mob['Mobs'])
+            async with self.bot.pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    sql = 'SELECT * FROM dimensions WHERE DimName=%s'
+                    if await cursor.execute(sql, (dim,)):
+                        mobs_cursor = 'SELECT * FROM dimensions WHERE DimName=%s'
+                        await cursor.execute(mobs_cursor, (dim,))
+                        mob = await cursor.fetchone()
+                        check = mob['Mobs']
 
-                    mobPicked = random.choice(list(mob.keys()))
+                        mob = await convert_json_to_dict(check)
+                        mobPicked = random.choice(list(mob.keys()))
 
-                    mobStats = mob[mobPicked]
-                    mobDrop = mobStats[0]
-                    mobHealth = mobStats[1]
+                        mobStats = mob[mobPicked]
+                        mobDrop = mobStats[0]
+                        mobHealth = mobStats[1]
+                        mobImage = mobStats[2]
 
-                    playerDmg = 0
+                        playerDmg = 0
 
-                    sword_values = {
-                        "Wooden Sword": 4
-                    }
+                        sword_values = {
+                            "Wooden Sword": 4
+                        }
 
-                    sharpness_values = {
-                        "Sharpness 1": 3
-                    }
+                        sharpness_values = {
+                            "Sharpness 1": 3
+                        }
 
-                    for sword, value in sword_values.items():
-                        has_sword = await hasItem(self.bot, interaction.user.id, sword)
-                        if has_sword[0]:
-                            playerDmg = value
-
-                    for sharpness, value in sharpness_values.items():
-                        addDmg = value
                         for sword, value in sword_values.items():
                             has_sword = await hasItem(self.bot, interaction.user.id, sword)
-                            has_sharpness = await hasItem(self.bot, interaction.user.id, sharpness)
-                            if has_sharpness[0] and has_sword[0]:
-                                playerDmg += addDmg
-                    
-                    if playerDmg == 0:
-                        embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"You don't have a sword! Type **/shop** to buy one!", color=discord.Color.from_str(minecraft_color))
-                        await interaction.edit_original_response(embed=embed)
-                        return
-                    
-                    while mobHealth > 0:
-                        N = 3
-                        randStr = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(N))
+                            if has_sword[0]:
+                                playerDmg = value
 
-                        def check(message):
-                            return message.channel == interaction.channel and message.author == interaction.user
+                        for sharpness, value in sharpness_values.items():
+                            addDmg = value
+                            for sword, value in sword_values.items():
+                                has_sword = await hasItem(self.bot, interaction.user.id, sword)
+                                has_sharpness = await hasItem(self.bot, interaction.user.id, sharpness)
+                                if has_sharpness[0] and has_sword[0]:
+                                    playerDmg += addDmg
                         
-                        health = generate_health(mobHealth)
-                        embed = discord.Embed(title=f"{logo_emoji} Hunt", description=f"Type `{randStr}` and send it in this channel to attack **{mobPicked}**!\n\n{health}", color=discord.Color.green())
-                        await interaction.edit_original_response(embed=embed)
-
-                        try:
-                            answer = await self.bot.wait_for('message', check=check, timeout=60.0)
-                        except asyncio.TimeoutError:
-                            embed = discord.Embed(title=f"{logo_emoji} Hunt", description="You took too long! The mob escaped!", color=discord.Color.from_str(minecraft_color))
+                        if playerDmg == 0:
+                            embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"You don't have a sword! Type **/shop** to buy one!", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                             await interaction.edit_original_response(embed=embed)
                             return
+                        
+                        while mobHealth > 0:
+                            N = 3
+                            randStr = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(N))
 
-                        if answer.content.upper() == randStr:
-                            await answer.delete()
-                            mobHealth -= playerDmg
+                            def check(message):
+                                return message.channel == interaction.channel and message.author == interaction.user
+                            
+                            health = generate_health(mobHealth)
+                            embed = discord.Embed(title=f"Hunt", description=f"Type `{randStr}` and send it in this channel to attack **{mobPicked}**!\n\n{health}", color=discord.Color.green())
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                            embed.set_thumbnail(url=mobImage)
+                            await interaction.edit_original_response(embed=embed)
 
-                    if mobHealth <= 0:
-                        embed = discord.Embed(title=f"{logo_emoji} Hunt", description=f"You defeated **{mobPicked}** and got **{mobDrop}**!", color=discord.Color.from_str(minecraft_color))
-                        await interaction.edit_original_response(embed=embed)
-                        await addItem(self.bot, interaction.user.id, mobDrop, 1)
+                            try:
+                                answer = await self.bot.wait_for('message', check=check, timeout=60.0)
+                            except asyncio.TimeoutError:
+                                embed = discord.Embed(title=f"Hunt", description="You took too long! The mob escaped!", color=discord.Color.from_str(minecraft_color))
+                                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                                await interaction.edit_original_response(embed=embed)
+                                return
 
-        await logCommand(interaction)
+                            if answer.content.upper() == randStr:
+                                await answer.delete()
+                                mobHealth -= playerDmg
+
+                        if mobHealth <= 0:
+                            embed = discord.Embed(title=f"Hunt", description=f"You defeated **{mobPicked}** and got **{mobDrop}**!", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                            await interaction.edit_original_response(embed=embed)
+                            await addItem(self.bot, interaction.user.id, mobDrop, 1)
+
+            await logCommand(interaction)
+        else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @hunt.autocomplete("dim")
     async def mine_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

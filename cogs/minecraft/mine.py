@@ -5,7 +5,7 @@ import yaml
 
 from discord import app_commands
 from discord.ext import commands
-from utils import addItem, convert_json_to_dict, checkPlayer, hasItem, logCommand
+from utils import addItem, convert_json_to_dict, checkPlayer, hasItem, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -36,75 +36,86 @@ class mine(commands.Cog):
     @app_commands.describe(dim="The dimension name")
     @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
     async def mine(self, interaction: discord.Interaction, dim: str):
-       await checkPlayer(self.bot, interaction.user.id)
-       async with self.bot.pool.acquire() as conn:
-           async with conn.cursor(aiomysql.DictCursor) as cursor:
-            userHarv = 0
-            toGet = 1
+       if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
+            await interaction.response.defer(thinking=True, ephemeral=True)
+            async with self.bot.pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
+                    userHarv = 0
+                    toGet = 1
 
-            pickaxe_values = {
-                "Wooden Pickaxe": 1,
-                "Stone Pickaxe": 1,
-                "Iron Pickaxe": 2,
-                "Diamond Pickaxe": 3,
-                "Netherite Pickaxe": 4
-            }
+                    pickaxe_values = {
+                        "Wooden Pickaxe": 1,
+                        "Stone Pickaxe": 1,
+                        "Iron Pickaxe": 2,
+                        "Diamond Pickaxe": 3,
+                        "Netherite Pickaxe": 4
+                    }
 
-            fortune_values = {
-                "Fortune 1": 2,
-                "Fortune 2": 3,
-                "Fortune 3": 4
-            }
+                    fortune_values = {
+                        "Fortune 1": 2,
+                        "Fortune 2": 3,
+                        "Fortune 3": 4
+                    }
 
-            for pickaxe, value in pickaxe_values.items():
-                    has_pickaxe = await hasItem(self.bot, interaction.user.id, pickaxe)
-                    if has_pickaxe[0]:
-                        userHarv = value
-                
-            for fortune, value in fortune_values.items():
-                    has_fortune = await hasItem(self.bot, interaction.user.id, fortune)
-                    if has_fortune[0]:
-                        toGet = random.randint(1, value)
+                    for pickaxe, value in pickaxe_values.items():
+                            has_pickaxe = await hasItem(self.bot, interaction.user.id, pickaxe)
+                            if has_pickaxe[0]:
+                                userHarv = value
+                        
+                    for fortune, value in fortune_values.items():
+                            has_fortune = await hasItem(self.bot, interaction.user.id, fortune)
+                            if has_fortune[0]:
+                                toGet = random.randint(1, value)
 
-            block_cursor = 'SELECT Blocks FROM dimensions WHERE DimName=%s'
-            await cursor.execute(block_cursor, (dim,))
-            block = await cursor.fetchone()
-            if block:
-                print(block)
-                block = random.choice(block)
-                block_dict = await convert_json_to_dict(block)
-                block = random.choice(list(block_dict))
+                    block_cursor = 'SELECT Blocks FROM dimensions WHERE DimName=%s'
+                    await cursor.execute(block_cursor, (dim,))
+                    block = await cursor.fetchone()
+                    if block:
+                        print(block)
+                        block_dict = await convert_json_to_dict(block['Blocks'])
+                        block = random.choice(list(block_dict))
 
-                harv_cursor = 'SELECT HarvestLevel FROM items WHERE ItemName=%s'
-                await cursor.execute(harv_cursor, (block,))
-                harvLvl = await cursor.fetchone()
+                        harv_cursor = 'SELECT HarvestLevel FROM items WHERE ItemName=%s'
+                        await cursor.execute(harv_cursor, (block,))
+                        harvLvl = await cursor.fetchone()
 
-                item_cursor = 'SELECT * FROM items WHERE ItemName=%s'
-                await cursor.execute(item_cursor, (block,))
-                item_n = await cursor.fetchone()
-                item_name = item_n['ItemName']
-                
-                emoji_cursor = 'SELECT Emoji FROM items WHERE ItemName=%s'
-                await cursor.execute(emoji_cursor, (block,))
-                emoji = await cursor.fetchone()
+                        item_cursor = 'SELECT * FROM items WHERE ItemName=%s'
+                        await cursor.execute(item_cursor, (block,))
+                        item_n = await cursor.fetchone()
+                        item_name = item_n['ItemName']
+                        
+                        emoji_cursor = 'SELECT Emoji FROM items WHERE ItemName=%s'
+                        await cursor.execute(emoji_cursor, (block,))
+                        emoji = await cursor.fetchone()
 
-                if userHarv >= harvLvl[0]:
-                    #jake sucks a penis YES
-                    # ur gf's penis give me those emojis 💦💦💦💦
-                    embed = discord.Embed(title=f"{logo_emoji} Block Mined", description=f"\n\nYou mined {toGet} {emoji[0]} **{item_name}**", color=discord.Color.from_str(minecraft_color))
-                    await addItem(self.bot, interaction.user.id, item_name, toGet)
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-                elif userHarv == 0:
-                    embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"\n\nYou tried to mine rocks with your hand and broke your fingers dumbass! Type **/shop** to buy a pickaxe!", color=discord.Color.from_str(minecraft_color))
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-                else:
-                    embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"\n\nYou can't mine **{item_name}**! Type **/shop** to buy a better pickaxe!", color=discord.Color.from_str(minecraft_color))
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-            else:
-                    embed = discord.Embed(title=f"{logo_emoji} Invalid Dimension", description=f"\n\nThat dimension does not exist!", color=discord.Color.from_str(minecraft_color))
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                        if userHarv >= harvLvl['HarvestLevel']:
+                            #jake sucks a penis YES
+                            # ur gf's penis give me those emojis 💦💦💦💦
+                            embed = discord.Embed(title=f"Block Mined", description=f"\n\nYou mined {toGet} {emoji['Emoji']} **{item_name}**", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                            await addItem(self.bot, interaction.user.id, item_name, toGet)
+                            await interaction.followup.send(embed=embed, ephemeral=True)
+                        elif userHarv == 0:
+                            embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"\n\nYou tried to mine rocks with your hand and broke your fingers dumbass! Type **/shop** to buy a pickaxe!", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                            await interaction.followup.send(embed=embed, ephemeral=True)
+                        else:
+                            embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"\n\nYou can't mine **{item_name}**! Type **/shop** to buy a better pickaxe!", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                            await interaction.followup.send(embed=embed, ephemeral=True)
+                    else:
+                            embed = discord.Embed(title=f"Invalid Dimension", description=f"\n\nThat dimension does not exist!", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                            await interaction.followup.send(embed=embed, ephemeral=True)
 
-       await logCommand(interaction)
+            await logCommand(interaction)
+       else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @mine.autocomplete("dim")
     async def mine_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

@@ -4,7 +4,7 @@ import yaml
 
 from discord import app_commands
 from discord.ext import commands
-from utils import addItem, checkPlayer, logCommand
+from utils import addItem, checkPlayer, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -34,44 +34,55 @@ class buy(commands.Cog):
     @app_commands.command(name="buy", description="Buy new items and upgrades!")
     @app_commands.describe(item="The name of the item", amount="The amount to buy")
     async def buy(self, interaction: discord.Interaction, item: str, amount: int):
-        await checkPlayer(self.bot, interaction.user.id)
-        async with self.bot.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
+            async with self.bot.pool.acquire() as conn:
+                async with conn.cursor(aiomysql.DictCursor) as cursor:
 
-                item_cursor = 'SELECT * FROM items WHERE ItemName=%s AND CanBuy=1'
-                await cursor.execute(item_cursor, (item,))
-                point = await cursor.fetchone()
-                
-                if point:
-                    cost = point['CostValue'] * amount
-                    emoji = point['Emoji']
+                    item_cursor = 'SELECT * FROM items WHERE ItemName=%s AND CanBuy=1'
+                    await cursor.execute(item_cursor, (item,))
+                    point = await cursor.fetchone()
+                    
+                    if point:
+                        cost = point['CostValue'] * amount
+                        emoji = point['Emoji']
 
-                    wallet_cursor = 'SELECT * FROM wallets WHERE UserId=%s'
-                    await cursor.execute(wallet_cursor, (interaction.user.id,))
-                    bal_point = await cursor.fetchone()
+                        wallet_cursor = 'SELECT * FROM wallets WHERE UserId=%s'
+                        await cursor.execute(wallet_cursor, (interaction.user.id,))
+                        bal_point = await cursor.fetchone()
 
-                    if bal_point:
-                        balance = bal_point['Coins']
+                        if bal_point:
+                            balance = bal_point['Coins']
 
-                        if balance >= cost:
-                            await addItem(self.bot, interaction.user.id, item, amount)
-                            
-                            sql = 'UPDATE wallets SET Coins=Coins-%s WHERE UserId=%s'
-                            await cursor.execute(sql, (cost, interaction.user.id))
-                            await conn.commit()
+                            if balance >= cost:
+                                await addItem(self.bot, interaction.user.id, item, amount)
+                                
+                                sql = 'UPDATE wallets SET Coins=Coins-%s WHERE UserId=%s'
+                                await cursor.execute(sql, (cost, interaction.user.id))
+                                await conn.commit()
 
-                            description = f"\n\nSuccessfully purchased **{amount}** {emoji} {item.capitalize()} for ${f"{cost:,}"}!" if emoji else f"\n\nSuccessfully purchased **{amount}** {item.capitalize()} for ${cost}!"
-                            embed = discord.Embed(title=f"{logo_emoji} Purchased Item", description=description, color=discord.Color.from_str(minecraft_color))
+                                description = f"\n\nSuccessfully purchased **{amount}** {emoji} {item.capitalize()} for ${f"{cost:,}"}!" if emoji else f"\n\nSuccessfully purchased **{amount}** {item.capitalize()} for ${cost}!"
+                                embed = discord.Embed(title=f"Purchased Item", description=description, color=discord.Color.from_str(minecraft_color))
+                                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+                            else:
+                                embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description="You do not have enough funds!", color=discord.Color.from_str(minecraft_color))
+                                embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                         else:
-                            embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description="You do not have enough funds!", color=discord.Color.from_str(minecraft_color))
+                            embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description="You do not have enough funds!", color=discord.Color.from_str(minecraft_color))
+                            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                     else:
-                        embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description="You do not have enough funds!", color=discord.Color.from_str(minecraft_color))
-                else:
-                    embed = discord.Embed(title=f"{logo_emoji} Bad Item", description=f"The item, **{item}**, does not exist!", color=discord.Color.red())
+                        embed = discord.Embed(title=f"Bad Item", description=f"The item, **{item}**, does not exist!", color=discord.Color.red())
+                        embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
 
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-        
-        await logCommand(interaction)
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+            await logCommand(interaction)
+        else:
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @buy.autocomplete("item")
     async def buy_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

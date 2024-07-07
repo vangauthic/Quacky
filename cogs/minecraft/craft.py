@@ -10,7 +10,7 @@ import string
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timedelta
-from utils import addItem, removeItem, listInventory, convert_json_to_dict, checkPlayer, hasItem, logCommand
+from utils import addItem, removeItem, listInventory, convert_json_to_dict, checkPlayer, hasItem, logCommand, checkServer
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -34,15 +34,16 @@ cooldown = 30
 
 #Crafting Table View
 class Craft(discord.ui.View):
-    def __init__(self, item):
+    def __init__(self, item, bot: commands.Bot):
         super().__init__()
         self.item = item
+        self.bot = bot
 
     @discord.ui.button(label='Confirm', style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         async with self.bot.pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cursor:
-                inventory = await listInventory(interaction.user.id)
+                inventory = await listInventory(self.bot, interaction.user.id)
 
                 reqItems = data['Recipes'][self.item]
                 
@@ -67,18 +68,20 @@ class Craft(discord.ui.View):
                     for item, count in required_items_count.items():
                         await removeItem(self.bot, interaction.user.id, item, count) #let's test
                     
-                    await addItem(self.bot, self.bot, interaction.user.id, self.item, 1)
+                    await addItem(self.bot, interaction.user.id, self.item, 1)
 
-                    embed = discord.Embed(title=f"{logo_emoji} Item Crafted", description=f"Successfully crafted **{self.item}**!", color=discord.Color.from_str(minecraft_color))
+                    embed = discord.Embed(title=f"Item Crafted", description=f"Successfully crafted **{self.item}**!", color=discord.Color.from_str(minecraft_color))
+                    embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
                 else:
-                    embed = discord.Embed(title=f"{logo_emoji} LOW NETWORTH INDIVIDUAL", description=f"You do not have the required items to craft **{self.item}**!", color=discord.Color.from_str(minecraft_color))
+                    embed = discord.Embed(title=f"LOW NETWORTH INDIVIDUAL", description=f"You do not have the required items to craft **{self.item}**!", color=discord.Color.from_str(minecraft_color))
+                    embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
 
                 await interaction.response.edit_message(embed=embed, view=None)
 
     #Cancel Button
     @discord.ui.button(label='Cancel', style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        main = discord.Embed(title=f"{logo_emoji} Crafting Table", description=f"Recipe cancelled.", color=discord.Color.from_str(minecraft_color))
+        main = discord.Embed(title=f"Crafting Table", description=f"Recipe cancelled.", color=discord.Color.from_str(minecraft_color))
 
         await interaction.response.send_message(embed=main, ephemeral=True)
         return
@@ -91,35 +94,43 @@ class craft(commands.Cog):
     @app_commands.command(name="craft", description="Craft a new item!")
     @app_commands.describe(item="The item you want to craft")
     async def craft(self, interaction: discord.Interaction, item: str):
-        await checkPlayer(self.bot, interaction.user.id)
+        if await checkServer(self.bot, interaction.guild.id):
+            await checkPlayer(self.bot, interaction.user.id)
 
-        empty = "<:empty:1250980038275235861> "
+            empty = "<:empty:1250980038275235861> "
 
 
-        if item in data["Recipes"]:
-            blocks = data["Recipes"][item]
+            if item in data["Recipes"]:
+                blocks = data["Recipes"][item]
 
-            description = f"**{item} Recipe**\n\n"
-            counter = 0
+                description = f"**{item} Recipe**\n\n"
+                counter = 0
 
-            for block in blocks:
-                for name, emoji in block.items():
-                    if name == "":
-                        description += empty
-                    else:
-                        description += f"{emoji} "
-                        
-                    counter += 1
+                for block in blocks:
+                    for name, emoji in block.items():
+                        if name == "":
+                            description += empty
+                        else:
+                            description += f"{emoji} "
+                            
+                        counter += 1
 
-                    if counter % 3 == 0:
-                        description += "\n"
+                        if counter % 3 == 0:
+                            description += "\n"
+            else:
+                description = f"**{item}** does not exist!"
+
+            main = discord.Embed(title=f"Crafting Table", description=description, color=discord.Color.from_str(minecraft_color))
+            main.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=main, ephemeral=True, view=Craft(item, self.bot))
+
+            await logCommand(interaction)
         else:
-            description = f"**{item}** does not exist!"
-
-        main = discord.Embed(title=f"{logo_emoji} Crafting Table", description=description, color=discord.Color.from_str(minecraft_color))
-        await interaction.response.send_message(embed=main, ephemeral=True, view=Craft(item))
-
-        await logCommand(interaction)
+            embed = discord.Embed(title=f"Game Disabled",
+                                  description="This server currently has the Quacky-3000 Minigame disabled.",
+                                  color=discord.Color.red())
+            embed.set_footer(text=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @craft.autocomplete("item")
     async def craft_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

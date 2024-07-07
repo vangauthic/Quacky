@@ -42,9 +42,11 @@ class additem(commands.Cog):
     @app_commands.describe(cost="The cost of the item (optional)")
     @app_commands.describe(emoji="The emoji of the item (optional)")
     @app_commands.describe(can_smelt="Can the item be smelted? (True/False)")
-    async def additem(self, interaction: discord.Interaction, item: str, sell: Optional[int], cost: Optional[int], emoji: Optional[str], can_smelt: Optional[bool]) -> None:
+    @app_commands.describe(smelt_item="What item should this be smelted into? (Create smelted item first)")
+    @app_commands.describe(trade_price="The price of the item in the Wandering Trader shop (optional)")
+    @app_commands.describe(tag="What tag should the item have?")
+    async def additem(self, interaction: discord.Interaction, item: str, sell: Optional[int], cost: Optional[int], emoji: Optional[str], can_smelt: Optional[bool], smelt_item: Optional[str], trade_price: Optional[str], tag: Optional[str]) -> None:
         await checkPlayer(self.bot, interaction.user.id)
-        await interaction.response.defer(thinking=True, ephemeral=True)
         if await hasAdmin(interaction):
             async with self.bot.pool.acquire() as conn:
                 async with conn.cursor(aiomysql.DictCursor) as cursor:
@@ -56,17 +58,21 @@ class additem(commands.Cog):
                     
                         sellValue, canSell = trueFalse(sell)
                         costValue, canBuy = trueFalse(cost)
+                        tradeValue, canTrade = trueFalse(trade_price)
                         smeltVault, canSmelt = trueFalse(can_smelt) # smeltValue is useless, don't use
                         
-                        sql = 'INSERT INTO items (ItemName, SellValue, CanSell, CostValue, CanBuy, Emoji, CanSmelt) VALUES (%s,%s,%s,%s,%s,%s,%s)'
-                        await cursor.execute(sql, (item, sellValue, canSell, costValue, canBuy, emoji, canSmelt))
+                        if smelt_item is None:
+                            smelt_item = ''
+                        
+                        sql = 'INSERT INTO items (ItemName, SellValue, CanSell, CostValue, CanBuy, Emoji, CanSmelt, SmeltedItem, CanTrade, TradePrice, Tag) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
+                        await cursor.execute(sql, (item, sellValue, canSell, costValue, canBuy, emoji, canSmelt, smelt_item, canTrade, tradeValue, tag))
                         await conn.commit()
 
                         if emoji:
                             is_valid = is_valid_emoji(emoji)
                             if not is_valid:
                                 embed = discord.Embed(title=f"{logo_emoji} Invalid Emoji", description=f"**{emoji}** is not a valid emoji!", color=admin_color)
-                                await interaction.followup.send(embed=embed)
+                                await interaction.response.send_message(embed=embed, ephemeral=True)
                                 return
 
                         embed = discord.Embed(title=f"{logo_emoji} Item Added", description=f"""
@@ -78,13 +84,17 @@ class additem(commands.Cog):
                                                                                 Can Buy: {canBuy}
                                                                                 Emoji: {emoji}
                                                                                 Can Smelt: {canSmelt}
+                                                                                Smelted Item: {smelt_item}
+                                                                                Trade Price: {tradeValue}
+                                                                                Can Trade: {canTrade}
+                                                                                Tag: {tag}
                                                                                 """, color=admin_color)
                     else:
                         embed = discord.Embed(title=f"{logo_emoji} Item Already Exists", description=f"**{item}** is already an item!", color=admin_color)
         else:
             embed = discord.Embed(title=f"{logo_emoji} No Permission", description="You do not have permission to use this command!", color=admin_color)
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(additem(bot), guilds=[discord.Object(id=admin_guild_id)])
