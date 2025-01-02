@@ -1,5 +1,5 @@
 General:
-    TOKEN: "MTIzNTA4ODg4MzYyMDkwOTExNg.GdeJ2L.pcu9MlxFS0zuseTfqkE2FQRJAy_w3WtOrrA9RI"
+    TOKEN: ""
     ACTIVITY: "watching" # playing, watching, listening
     DOING_ACTIVITY: "Ducks" # what you want it to be playing, watching, listening, competing
     STATUS: "online" # online, idle, dnd, invisible
@@ -7,10 +7,10 @@ General:
     ADMIN_GUILD_ID: 1133117508178681908
 
 MySQL:
-    HOST: "136.243.146.219"
-    USERNAME: "u15_RKxGIFScgI"
-    PASSWORD: "miruP5msoHZb!nwmwi4eoH.p"
-    DATABASE: "s15_Quacky"
+    HOST: ""
+    USERNAME: ""
+    PASSWORD: ""
+    DATABASE: ""
 
 Roles:
     ADMIN_ROLE_ID: 1244846648392417372
